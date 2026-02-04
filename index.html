@@ -2,50 +2,40 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Análise Avançada Likert - Dimensões</title>
+    <title>Análise Likert por Dimensão</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; }
-        .config-card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
-        input { width: 60%; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; margin-right: 10px; }
-        button { padding: 12px 25px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        
-        .grid-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .chart-box { background: white; padding: 20px; border-radius: 12px; min-height: 400px; }
-        .full-width { grid-column: span 2; }
-        
-        h2 { color: #60a5fa; margin-top: 0; }
-        label { display: block; margin-bottom: 10px; color: #94a3b8; font-size: 0.9rem; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        input { width: 70%; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
+        button { padding: 12px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .chart-container { background: white; padding: 20px; border-radius: 12px; margin-top: 20px; height: 500px; }
+        h2 { text-align: center; color: #60a5fa; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="config-card">
-        <h2>Dashboard de Pesquisa Acadêmica</h2>
-        <label>Insira o link CSV da sua Planilha do Google (Publicada na Web)</label>
-        <input type="text" id="urlInput" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
-        <button onclick="carregarDados()">Gerar Análise</button>
+    <div class="card">
+        <h2>Frequência Likert por Dimensão</h2>
+        <div style="display:flex; gap:10px; justify-content: center;">
+            <input type="text" id="urlInput" placeholder="Link CSV da Planilha">
+            <button onclick="carregarDados()">Gerar Gráfico</button>
+        </div>
     </div>
 
-    <div class="grid-charts">
-        <div class="chart-box full-width">
-            <canvas id="chartDimensoes"></canvas>
-        </div>
-
-        <div class="chart-box">
-            <canvas id="chartRadar"></canvas>
-        </div>
-
-        <div class="chart-box">
-            <canvas id="chartIdade"></canvas>
-        </div>
+    <div class="chart-container">
+        <canvas id="graficoLikert"></canvas>
     </div>
 </div>
 
 <script>
-    let charts = {};
+    let meuGrafico = null;
+
+    // Escala: 0 (Infeliz) a 5 (Muito Feliz)
+    const labelsEscala = ["0 - Infeliz", "1", "2", "3", "4", "5 - Muito Feliz"];
+    const coresEscala = ["#ef4444", "#f87171", "#94a3b8", "#60a5fa", "#3b82f6", "#1d4ed8"];
 
     async function carregarDados() {
         const url = document.getElementById('urlInput').value;
@@ -55,90 +45,75 @@
             const response = await fetch(url);
             const text = await response.text();
             const linhas = text.split('\n').filter(l => l.trim() !== '').map(l => l.split(','));
+            const dados = linhas.slice(1).map(l => l.map(n => parseInt(n.trim())));
             
-            // Converte tudo para número, limpando espaços
-            const dados = linhas.slice(1).map(l => l.map(n => parseFloat(n.trim())));
-            processarEstatisticas(dados);
+            processarLikert(dados);
         } catch (e) {
-            alert("Erro ao processar dados. Verifique se a planilha está pública e no formato correto.");
+            alert("Erro ao processar dados.");
         }
     }
 
-    function processarEstatisticas(dados) {
-        // Definição das colunas conforme seu pedido (índice começa em 0)
-        const colIdade = 0;
-        const colGenero = 1;
-        const colsD1 = [2, 3, 4, 5, 6, 7];   // Colunas 3 a 8
-        const colsD2 = [8, 9, 10, 11, 12];   // Colunas 9 a 13
-        const colsD3 = [13, 14, 15, 16, 17]; // Colunas 14 a 18
-
-        const calcMedia = (row, cols) => {
-            const vals = cols.map(c => row[c]).filter(v => !isNaN(v));
-            return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-        };
-
-        const masc = dados.filter(d => d[colGenero] === 1);
-        const fem = dados.filter(d => d[colGenero] === 2);
-
-        const labels = ["Dimensão 1", "Dimensão 2", "Dimensão 3"];
-        
-        const getMediasGrupo = (grupo) => [
-            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD1), 0) / grupo.length || 0).toFixed(2),
-            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD2), 0) / grupo.length || 0).toFixed(2),
-            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD3), 0) / grupo.length || 0).toFixed(2)
+    function processarLikert(dados) {
+        // Mapeamento das colunas (conforme sua estrutura)
+        const dimensoes = [
+            { nome: "Dimensão 1", cols: [2, 3, 4, 5, 6, 7] },
+            { nome: "Dimensão 2", cols: [8, 9, 10, 11, 12] },
+            { nome: "Dimensão 3", cols: [13, 14, 15, 16, 17] }
         ];
 
-        const mediasMasc = getMediasGrupo(masc);
-        const mediasFem = getMediasGrupo(fem);
-
-        // Dados para correlação Idade vs Média Total
-        const dadosIdade = dados.map(row => ({
-            x: row[colIdade],
-            y: calcMedia(row, [...colsD1, ...colsD2, ...colsD3]).toFixed(2)
+        // Preparar datasets para o Chart.js (um dataset para cada nível da escala 0-5)
+        const datasets = labelsEscala.map((label, i) => ({
+            label: label,
+            data: [],
+            backgroundColor: coresEscala[i]
         }));
 
-        renderizarGraficos(labels, mediasMasc, mediasFem, dadosIdade);
+        dimensoes.forEach(dim => {
+            const contagem = [0, 0, 0, 0, 0, 0]; // para níveis 0,1,2,3,4,5
+            let totalRespostas = 0;
+
+            dados.forEach(row => {
+                dim.cols.forEach(colIdx => {
+                    const valor = row[colIdx];
+                    if (!isNaN(valor) && valor >= 0 && valor <= 5) {
+                        contagem[valor]++;
+                        totalRespostas++;
+                    }
+                });
+            });
+
+            // Converter para percentual para facilitar a comparação entre dimensões
+            contagem.forEach((qtd, i) => {
+                const percentual = ((qtd / totalRespostas) * 100).toFixed(1);
+                datasets[i].data.push(percentual);
+            });
+        });
+
+        renderizar(dimensoes.map(d => d.nome), datasets);
     }
 
-    function renderizarGraficos(labels, m, f, dadosIdade) {
-        // Limpar gráficos anteriores se existirem
-        Object.values(charts).forEach(c => c.destroy());
+    function renderizar(labelsDimensoes, datasets) {
+        const ctx = document.getElementById('graficoLikert').getContext('2d');
+        if (meuGrafico) meuGrafico.destroy();
 
-        const ctxBar = document.getElementById('chartDimensoes').getContext('2d');
-        charts.bar = new Chart(ctxBar, {
+        meuGrafico = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
-                datasets: [
-                    { label: 'Masculino', data: m, backgroundColor: '#3b82f6' },
-                    { label: 'Feminino', data: f, backgroundColor: '#ec4899' }
-                ]
-            },
-            options: { plugins: { title: { display: true, text: 'Médias por Dimensão e Gênero' } }, scales: { y: { max: 5, beginAtZero: true } } }
-        });
-
-        const ctxRadar = document.getElementById('chartRadar').getContext('2d');
-        charts.radar = new Chart(ctxRadar, {
-            type: 'radar',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'Masc', data: m, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' },
-                    { label: 'Fem', data: f, borderColor: '#ec4899', backgroundColor: 'rgba(236, 72, 153, 0.2)' }
-                ]
-            },
-            options: { scales: { r: { max: 5, beginAtZero: true } } }
-        });
-
-        const ctxIdade = document.getElementById('chartIdade').getContext('2d');
-        charts.idade = new Chart(ctxIdade, {
-            type: 'scatter',
-            data: {
-                datasets: [{ label: 'Idade vs Satisfação', data: dadosIdade, backgroundColor: '#6366f1' }]
+                labels: labelsDimensoes,
+                datasets: datasets
             },
             options: {
-                plugins: { title: { display: true, text: 'Correlação: Idade x Satisfação Geral' } },
-                scales: { x: { title: { display: true, text: 'Idade' } }, y: { min: 1, max: 5 } }
+                indexAxis: 'y', // Barras horizontais para melhor leitura
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#334155' } },
+                    title: { display: true, text: 'Distribuição de Sentimento (%) por Dimensão', font: {size: 18} }
+                },
+                scales: {
+                    x: { stacked: true, max: 100, title: { display: true, text: 'Percentual (%)' } },
+                    y: { stacked: true }
+                }
             }
         });
     }
