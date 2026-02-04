@@ -1,157 +1,128 @@
 <!DOCTYPE html>
-<html lang="pt-pt">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Análise de Dados - Alfa de Cronbach & Dispersão</title>
+    <title>Dashboard Likert - Resultados</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; padding: 20px; color: #f1f5f9; }
-        .container { max-width: 1000px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h1 { color: #60a5fa; text-align: center; margin-bottom: 5px; }
-        p { text-align: center; color: #94a3b8; margin-bottom: 25px; }
-        .input-group { margin-bottom: 30px; display: flex; gap: 10px; }
-        input { flex: 1; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: white; }
-        button { padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #1d4ed8; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; }
+        .header { background: #1e293b; color: white; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px; }
+        .input-box { background: white; padding: 20px; border-radius: 12px; display: flex; gap: 10px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+        button { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; }
         
-        .grid-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
-        .chart-box { background: #f8fafc; padding: 15px; border-radius: 8px; min-height: 350px; }
-        
-        .result-card { background: #1e293b; padding: 20px; border: 2px solid #334155; border-radius: 8px; margin-top: 20px; text-align: center; }
-        #alfa-valor { font-size: 3rem; font-weight: 900; color: #60a5fa; }
-        #alfa-status { font-size: 1.2rem; font-weight: bold; margin-top: 10px; }
+        .charts-grid { display: grid; grid-template-columns: 1fr; gap: 20px; margin-top: 20px; }
+        .chart-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .summary-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
+        .stat-card { background: white; padding: 15px; border-radius: 10px; text-align: center; border-left: 5px solid #2563eb; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Análise Psicométrica</h1>
-    <p>Cálculo de Consistência Interna via Google Sheets</p>
-    
-    <div class="input-group">
-        <input type="text" id="urlInput" placeholder="URL do CSV da Planilha Pública">
-        <button onclick="processarDados()">Analisar Planilha</button>
+    <div class="header">
+        <h1>Análise de Satisfação (Likert)</h1>
+        <p>Transformando dados da planilha em insights visuais</p>
     </div>
 
-    <div id="resultado" class="result-card" style="display:none;">
-        <div id="alfa-valor">0.0000</div>
-        <div id="alfa-status">Aguardando...</div>
+    <div class="input-box">
+        <input type="text" id="urlInput" placeholder="URL do CSV da Planilha (Publicada na Web)">
+        <button onclick="carregarDados()">Gerar Dashboard</button>
     </div>
 
-    <div class="grid-charts">
-        <div class="chart-box">
-            <canvas id="graficoVariancia"></canvas>
-        </div>
-        <div class="chart-box">
-            <canvas id="graficoDispersao"></canvas>
-        </div>
-    </div>
+    <div id="estatisticas" class="summary-stats"></div>
+    <div id="chartsContainer" class="charts-grid"></div>
 </div>
 
 <script>
-    let chartVar = null;
-    let chartDisp = null;
+    // Configuração das cores da escala Likert (do 1 ao 5)
+    const coresLikert = [
+        '#e11d48', // 1 - Discordo Totalmente (Vermelho)
+        '#fb7185', // 2 - Discordo (Rosa)
+        '#94a3b8', // 3 - Neutro (Cinza)
+        '#60a5fa', // 4 - Concordo (Azul Claro)
+        '#1d4ed8'  // 5 - Concordo Totalmente (Azul Escuro)
+    ];
 
-    async function processarDados() {
+    const labelsLikert = ["Discordo Totalmente", "Discordo", "Neutro", "Concordo", "Concordo Totalmente"];
+
+    async function carregarDados() {
         const url = document.getElementById('urlInput').value;
-        if (!url) return alert("Por favor, insira a URL do CSV!");
+        if (!url) return alert("Insira o link do CSV!");
 
         try {
             const response = await fetch(url);
-            const dataText = await response.text();
+            const text = await response.text();
+            const linhas = text.split('\n').filter(l => l.trim() !== '').map(l => l.split(','));
             
-            const linhas = dataText.split('\n').filter(l => l.trim() !== '').map(l => l.split(','));
             const cabecalho = linhas[0];
-            const matriz = linhas.slice(1).map(l => l.map(Number)).filter(l => !l.some(isNaN));
+            const dados = linhas.slice(1).map(l => l.map(n => parseInt(n.trim())));
 
-            const analise = calcularEstatisticas(matriz);
-            exibirResultados(analise, cabecalho, matriz);
+            processarLikert(cabecalho, dados);
         } catch (e) {
-            alert("Erro ao processar dados. Certifique-se de que a planilha está publicada como CSV.");
+            alert("Erro ao processar. Verifique o link e se os dados são numéricos.");
         }
     }
 
-    function calcularVariancia(valores) {
-        const n = valores.length;
-        if (n < 2) return 0;
-        const media = valores.reduce((a, b) => a + b, 0) / n;
-        return valores.reduce((a, b) => a + Math.pow(b - media, 2), 0) / (n - 1);
-    }
+    function processarLikert(cabecalho, dados) {
+        const container = document.getElementById('chartsContainer');
+        const statsContainer = document.getElementById('estatisticas');
+        container.innerHTML = '';
+        statsContainer.innerHTML = '';
 
-    function calcularEstatisticas(matriz) {
-        const k = matriz[0].length;
-        const n = matriz.length;
-        
-        // Variâncias de cada pergunta
-        const varianciasItens = [];
-        for (let col = 0; col < k; col++) {
-            varianciasItens.push(calcularVariancia(matriz.map(l => l[col])));
+        // Para cada pergunta (coluna)
+        for (let col = 0; col < cabecalho.length; col++) {
+            const tituloPergunta = cabecalho[col];
+            const respostas = dados.map(linha => linha[col]).filter(n => !isNaN(n));
+            
+            // Contar frequências (1 a 5)
+            const contagem = [0, 0, 0, 0, 0];
+            respostas.forEach(r => { if(r >= 1 && r <= 5) contagem[r-1]++; });
+
+            // Calcular média da pergunta
+            const media = (respostas.reduce((a,b) => a+b, 0) / respostas.length).toFixed(2);
+
+            // Criar Cartão de Estatística Rápida
+            statsContainer.innerHTML += `
+                <div class="stat-card">
+                    <small>${tituloPergunta}</small>
+                    <div style="font-size: 1.5rem; font-weight: bold; color: #1e293b;">Média: ${media}</div>
+                </div>
+            `;
+
+            // Criar elemento do gráfico
+            const card = document.createElement('div');
+            card.className = 'chart-card';
+            card.innerHTML = `<canvas id="chart-${col}"></canvas>`;
+            container.appendChild(card);
+
+            renderizarGrafico(col, tituloPergunta, contagem);
         }
-
-        // Variância total
-        const somasIndividuais = matriz.map(l => l.reduce((a, b) => a + b, 0));
-        const varianciaTotal = calcularVariancia(somasIndividuais);
-        
-        const alfa = (k / (k - 1)) * (1 - (varianciasItens.reduce((a, b) => a + b, 0) / varianciaTotal));
-
-        // Dados para dispersão: Média de cada respondente
-        const mediasRespondentes = somasIndividuais.map(s => s / k);
-
-        return { alfa, varianciasItens, mediasRespondentes };
     }
 
-    function exibirResultados(analise, cabecalho, matriz) {
-        document.getElementById('resultado').style.display = 'block';
-        const val = analise.alfa.toFixed(4);
-        document.getElementById('alfa-valor').innerText = val;
-        
-        const status = document.getElementById('alfa-status');
-        if (val > 0.8) { status.innerText = "Excelente Consistência"; status.style.color = "#4ade80"; }
-        else if (val > 0.7) { status.innerText = "Consistência Aceitável"; status.style.color = "#facc15"; }
-        else { status.innerText = "Consistência Baixa"; status.style.color = "#f87171"; }
-
-        gerarGraficos(cabecalho, analise.varianciasItens, analise.mediasRespondentes);
-    }
-
-    function gerarGraficos(labels, dadosVar, dadosMedia) {
-        // 1. Gráfico de Barras (Variância)
-        const ctxVar = document.getElementById('graficoVariancia').getContext('2d');
-        if (chartVar) chartVar.destroy();
-        chartVar = new Chart(ctxVar, {
-            type: 'bar',
+    function renderizarGrafico(id, titulo, data) {
+        const ctx = document.getElementById(`chart-${id}`).getContext('2d');
+        new Chart(ctx, {
+            type: 'bar', // Gráfico de barras horizontais é melhor para ler os títulos
             data: {
-                labels: labels,
+                labels: labelsLikert,
                 datasets: [{
-                    label: 'Variância por Item',
-                    data: dadosVar,
-                    backgroundColor: '#60a5fa'
-                }]
-            },
-            options: { responsive: true, plugins: { title: { display: true, text: 'Consistência de cada Pergunta' } } }
-        });
-
-        // 2. Gráfico de Dispersão (Item 1 solicitado)
-        const ctxDisp = document.getElementById('graficoDispersao').getContext('2d');
-        if (chartDisp) chartDisp.destroy();
-        
-        // Formatar dados para o Chart.js (x: índice do utilizador, y: média dele)
-        const pontosDispersao = dadosMedia.map((m, i) => ({ x: i + 1, y: m }));
-
-        chartDisp = new Chart(ctxDisp, {
-            type: 'scatter',
-            data: {
-                datasets: [{
-                    label: 'Média por Respondente',
-                    data: pontosDispersao,
-                    backgroundColor: '#f87171'
+                    label: 'Quantidade de Respostas',
+                    data: data,
+                    backgroundColor: coresLikert,
+                    borderRadius: 5
                 }]
             },
             options: {
+                indexAxis: 'y', // Inverte para barras horizontais
                 responsive: true,
-                plugins: { title: { display: true, text: 'Dispersão de Respostas (Outliers)' } },
+                plugins: {
+                    title: { display: true, text: titulo, font: { size: 16 } },
+                    legend: { display: false }
+                },
                 scales: {
-                    x: { title: { display: true, text: 'ID Respondente' } },
-                    y: { title: { display: true, text: 'Pontuação Média' }, min: 1 }
+                    x: { beginAtZero: true, grid: { display: false } }
                 }
             }
         });
