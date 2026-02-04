@@ -2,40 +2,49 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Análise Likert por Dimensão</title>
+    <title>Análise Detalhada por Pergunta (D1, D2, D3)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; }
-        .card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        input { width: 70%; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
-        button { padding: 12px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .chart-container { background: white; padding: 20px; border-radius: 12px; margin-top: 20px; height: 500px; }
-        h2 { text-align: center; color: #60a5fa; }
+        .container { max-width: 1100px; margin: auto; }
+        .header-card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 25px; text-align: center; }
+        input { width: 60%; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
+        button { padding: 12px 25px; background: #22c55e; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        .dimension-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 30px; height: 450px; }
+        h2 { color: #60a5fa; margin-top: 0; }
+        .dim-title { color: #1e293b; text-align: center; margin-bottom: 15px; font-weight: 800; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="card">
-        <h2>Frequência Likert por Dimensão</h2>
+    <div class="header-card">
+        <h2>Dashboard Analítico: Pergunta a Pergunta</h2>
         <div style="display:flex; gap:10px; justify-content: center;">
-            <input type="text" id="urlInput" placeholder="Link CSV da Planilha">
-            <button onclick="carregarDados()">Gerar Gráfico</button>
+            <input type="text" id="urlInput" placeholder="Link CSV da Planilha Pública">
+            <button onclick="carregarDados()">Analisar Tudo</button>
         </div>
     </div>
 
-    <div class="chart-container">
-        <canvas id="graficoLikert"></canvas>
-    </div>
+    <div id="chartsArea">
+        </div>
 </div>
 
 <script>
-    let meuGrafico = null;
+    let instanciasGraficos = [];
 
-    // Escala: 0 (Infeliz) a 5 (Muito Feliz)
-    const labelsEscala = ["0 - Infeliz", "1", "2", "3", "4", "5 - Muito Feliz"];
-    const coresEscala = ["#ef4444", "#f87171", "#94a3b8", "#60a5fa", "#3b82f6", "#1d4ed8"];
+    // Cores: Verde (5) -> Amarelo (3) -> Vermelho (0)
+    const coresLikert = [
+        "#dc2626", // 0 - Infeliz (Vermelho escuro)
+        "#ef4444", // 1
+        "#f87171", // 2
+        "#facc15", // 3 (Neutro/Amarelo)
+        "#4ade80", // 4
+        "#16a34a"  // 5 - Muito Feliz (Verde escuro)
+    ].reverse(); // Invertido para que 5 seja verde e 0 vermelho
+
+    const labelsEscala = ["5 - Muito Feliz", "4", "3", "2", "1", "0 - Infeliz"];
 
     async function carregarDados() {
         const url = document.getElementById('urlInput').value;
@@ -45,77 +54,77 @@
             const response = await fetch(url);
             const text = await response.text();
             const linhas = text.split('\n').filter(l => l.trim() !== '').map(l => l.split(','));
+            
+            const cabecalho = linhas[0];
             const dados = linhas.slice(1).map(l => l.map(n => parseInt(n.trim())));
             
-            processarLikert(dados);
+            processarDimensoes(cabecalho, dados);
         } catch (e) {
-            alert("Erro ao processar dados.");
+            alert("Erro ao ler dados. Verifique o link CSV.");
         }
     }
 
-    function processarLikert(dados) {
-        // Mapeamento das colunas (conforme sua estrutura)
-        const dimensoes = [
+    function processarDimensoes(cabecalho, dados) {
+        const area = document.getElementById('chartsArea');
+        area.innerHTML = ''; // Limpa a área
+        instanciasGraficos.forEach(g => g.destroy());
+        instanciasGraficos = [];
+
+        // Definição exata das colunas conforme seu esquema
+        const configuracao = [
             { nome: "Dimensão 1", cols: [2, 3, 4, 5, 6, 7] },
             { nome: "Dimensão 2", cols: [8, 9, 10, 11, 12] },
             { nome: "Dimensão 3", cols: [13, 14, 15, 16, 17] }
         ];
 
-        // Preparar datasets para o Chart.js (um dataset para cada nível da escala 0-5)
-        const datasets = labelsEscala.map((label, i) => ({
-            label: label,
-            data: [],
-            backgroundColor: coresEscala[i]
-        }));
+        configuracao.forEach((dim, index) => {
+            // Criar container do gráfico
+            const section = document.createElement('div');
+            section.className = 'dimension-section';
+            section.innerHTML = `<div class="dim-title">${dim.nome}</div><canvas id="canvas-${index}"></canvas>`;
+            area.appendChild(section);
 
-        dimensoes.forEach(dim => {
-            const contagem = [0, 0, 0, 0, 0, 0]; // para níveis 0,1,2,3,4,5
-            let totalRespostas = 0;
+            // Nomes das perguntas (Ex: D1P1, D1P2...)
+            const labelsPerguntas = dim.cols.map((c, i) => `P${i + 1}`);
 
-            dados.forEach(row => {
-                dim.cols.forEach(colIdx => {
-                    const valor = row[colIdx];
-                    if (!isNaN(valor) && valor >= 0 && valor <= 5) {
-                        contagem[valor]++;
-                        totalRespostas++;
-                    }
-                });
+            // Preparar dados (6 níveis: de 5 a 0)
+            const datasets = labelsEscala.map((label, idxEscala) => {
+                const valorAlvo = 5 - idxEscala; // Mapeia 0->5, 1->4, etc.
+                return {
+                    label: label,
+                    data: dim.cols.map(colIdx => {
+                        const total = dados.length;
+                        const contagem = dados.filter(row => row[colIdx] === valorAlvo).length;
+                        return ((contagem / total) * 100).toFixed(1);
+                    }),
+                    backgroundColor: coresLikert[idxEscala]
+                };
             });
 
-            // Converter para percentual para facilitar a comparação entre dimensões
-            contagem.forEach((qtd, i) => {
-                const percentual = ((qtd / totalRespostas) * 100).toFixed(1);
-                datasets[i].data.push(percentual);
-            });
+            renderizar(index, labelsPerguntas, datasets);
         });
-
-        renderizar(dimensoes.map(d => d.nome), datasets);
     }
 
-    function renderizar(labelsDimensoes, datasets) {
-        const ctx = document.getElementById('graficoLikert').getContext('2d');
-        if (meuGrafico) meuGrafico.destroy();
-
-        meuGrafico = new Chart(ctx, {
+    function renderizar(idx, labels, datasets) {
+        const ctx = document.getElementById(`canvas-${idx}`).getContext('2d');
+        const novoGrafico = new Chart(ctx, {
             type: 'bar',
-            data: {
-                labels: labelsDimensoes,
-                datasets: datasets
-            },
+            data: { labels: labels, datasets: datasets },
             options: {
-                indexAxis: 'y', // Barras horizontais para melhor leitura
+                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: '#334155' } },
-                    title: { display: true, text: 'Distribuição de Sentimento (%) por Dimensão', font: {size: 18} }
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: {size: 11} } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}%` } }
                 },
                 scales: {
-                    x: { stacked: true, max: 100, title: { display: true, text: 'Percentual (%)' } },
+                    x: { stacked: true, max: 100, ticks: { callback: v => v + '%' } },
                     y: { stacked: true }
                 }
             }
         });
+        instanciasGraficos.push(novoGrafico);
     }
 </script>
 
