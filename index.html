@@ -2,39 +2,50 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Análise por Dimensão e Gênero</title>
+    <title>Análise Avançada Likert - Dimensões</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; }
-        .config-card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        input { width: 70%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
-        button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .chart-container { background: white; padding: 25px; border-radius: 12px; margin-top: 20px; }
-        h2 { text-align: center; color: #60a5fa; }
+        .container { max-width: 1100px; margin: auto; }
+        .config-card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
+        input { width: 60%; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; margin-right: 10px; }
+        button { padding: 12px 25px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        .grid-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .chart-box { background: white; padding: 20px; border-radius: 12px; min-height: 400px; }
+        .full-width { grid-column: span 2; }
+        
+        h2 { color: #60a5fa; margin-top: 0; }
+        label { display: block; margin-bottom: 10px; color: #94a3b8; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="config-card">
-        <h2>Análise Comparativa Likert</h2>
-        <div style="display:flex; gap:10px; justify-content: center;">
-            <input type="text" id="urlInput" placeholder="URL do CSV da Planilha">
-            <button onclick="carregarDados()">Analisar Dimensões</button>
-        </div>
-        <p style="font-size: 0.8rem; color: #94a3b8; text-align: center; margin-top: 10px;">
-            * A primeira coluna deve ser o GÊNERO (1 ou 2). As próximas colunas serão agrupadas em D1, D2, etc.
-        </p>
+        <h2>Dashboard de Pesquisa Acadêmica</h2>
+        <label>Insira o link CSV da sua Planilha do Google (Publicada na Web)</label>
+        <input type="text" id="urlInput" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
+        <button onclick="carregarDados()">Gerar Análise</button>
     </div>
 
-    <div class="chart-container">
-        <canvas id="graficoDimensoes"></canvas>
+    <div class="grid-charts">
+        <div class="chart-box full-width">
+            <canvas id="chartDimensoes"></canvas>
+        </div>
+
+        <div class="chart-box">
+            <canvas id="chartRadar"></canvas>
+        </div>
+
+        <div class="chart-box">
+            <canvas id="chartIdade"></canvas>
+        </div>
     </div>
 </div>
 
 <script>
-    let meuGrafico = null;
+    let charts = {};
 
     async function carregarDados() {
         const url = document.getElementById('urlInput').value;
@@ -45,86 +56,89 @@
             const text = await response.text();
             const linhas = text.split('\n').filter(l => l.trim() !== '').map(l => l.split(','));
             
+            // Converte tudo para número, limpando espaços
             const dados = linhas.slice(1).map(l => l.map(n => parseFloat(n.trim())));
-            processarDimensoes(dados);
+            processarEstatisticas(dados);
         } catch (e) {
-            alert("Erro ao processar dados.");
+            alert("Erro ao processar dados. Verifique se a planilha está pública e no formato correto.");
         }
     }
 
-    function processarDimensoes(dados) {
-        // Separar dados por gênero (assumindo coluna 0 como gênero)
-        const masc = dados.filter(d => d[0] === 1);
-        const fem = dados.filter(d => d[0] === 2);
+    function processarEstatisticas(dados) {
+        // Definição das colunas conforme seu pedido (índice começa em 0)
+        const colIdade = 0;
+        const colGenero = 1;
+        const colsD1 = [2, 3, 4, 5, 6, 7];   // Colunas 3 a 8
+        const colsD2 = [8, 9, 10, 11, 12];   // Colunas 9 a 13
+        const colsD3 = [13, 14, 15, 16, 17]; // Colunas 14 a 18
 
-        // Definir quais colunas pertencem a qual dimensão (Exemplo: 3 perguntas por dimensão)
-        // Se sua planilha mudar, ajuste aqui os índices das colunas
-        const dimensoesConfig = [
-            { nome: "D1: Ambiente", cols: [1, 2, 3] },
-            { nome: "D2: Liderança", cols: [4, 5, 6] },
-            { nome: "D3: Ferramentas", cols: [7, 8, 9] }
-        ];
-
-        const calcularMediaDimensao = (grupo, cols) => {
-            if (grupo.length === 0) return 0;
-            let somaTotal = 0;
-            let contagem = 0;
-            grupo.forEach(row => {
-                cols.forEach(c => {
-                    if(!isNaN(row[c])) {
-                        somaTotal += row[c];
-                        contagem++;
-                    }
-                });
-            });
-            return (somaTotal / contagem).toFixed(2);
+        const calcMedia = (row, cols) => {
+            const vals = cols.map(c => row[c]).filter(v => !isNaN(v));
+            return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
         };
 
-        const labels = dimensoesConfig.map(d => d.nome);
-        const mediasMasc = dimensoesConfig.map(d => calcularMediaDimensao(masc, d.cols));
-        const mediasFem = dimensoesConfig.map(d => calcularMediaDimensao(fem, d.cols));
+        const masc = dados.filter(d => d[colGenero] === 1);
+        const fem = dados.filter(d => d[colGenero] === 2);
 
-        renderizarGrafico(labels, mediasMasc, mediasFem);
+        const labels = ["Dimensão 1", "Dimensão 2", "Dimensão 3"];
+        
+        const getMediasGrupo = (grupo) => [
+            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD1), 0) / grupo.length || 0).toFixed(2),
+            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD2), 0) / grupo.length || 0).toFixed(2),
+            (grupo.reduce((acc, row) => acc + calcMedia(row, colsD3), 0) / grupo.length || 0).toFixed(2)
+        ];
+
+        const mediasMasc = getMediasGrupo(masc);
+        const mediasFem = getMediasGrupo(fem);
+
+        // Dados para correlação Idade vs Média Total
+        const dadosIdade = dados.map(row => ({
+            x: row[colIdade],
+            y: calcMedia(row, [...colsD1, ...colsD2, ...colsD3]).toFixed(2)
+        }));
+
+        renderizarGraficos(labels, mediasMasc, mediasFem, dadosIdade);
     }
 
-    function renderizarGrafico(labels, masc, fem) {
-        const ctx = document.getElementById('graficoDimensoes').getContext('2d');
-        if (meuGrafico) meuGrafico.destroy();
+    function renderizarGraficos(labels, m, f, dadosIdade) {
+        // Limpar gráficos anteriores se existirem
+        Object.values(charts).forEach(c => c.destroy());
 
-        meuGrafico = new Chart(ctx, {
+        const ctxBar = document.getElementById('chartDimensoes').getContext('2d');
+        charts.bar = new Chart(ctxBar, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
-                    {
-                        label: 'Masculino (1)',
-                        data: masc,
-                        backgroundColor: '#3b82f6',
-                        borderColor: '#2563eb',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Feminino (2)',
-                        data: fem,
-                        backgroundColor: '#ec4899',
-                        borderColor: '#db2777',
-                        borderWidth: 1
-                    }
+                    { label: 'Masculino', data: m, backgroundColor: '#3b82f6' },
+                    { label: 'Feminino', data: f, backgroundColor: '#ec4899' }
                 ]
             },
+            options: { plugins: { title: { display: true, text: 'Médias por Dimensão e Gênero' } }, scales: { y: { max: 5, beginAtZero: true } } }
+        });
+
+        const ctxRadar = document.getElementById('chartRadar').getContext('2d');
+        charts.radar = new Chart(ctxRadar, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Masc', data: m, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' },
+                    { label: 'Fem', data: f, borderColor: '#ec4899', backgroundColor: 'rgba(236, 72, 153, 0.2)' }
+                ]
+            },
+            options: { scales: { r: { max: 5, beginAtZero: true } } }
+        });
+
+        const ctxIdade = document.getElementById('chartIdade').getContext('2d');
+        charts.idade = new Chart(ctxIdade, {
+            type: 'scatter',
+            data: {
+                datasets: [{ label: 'Idade vs Satisfação', data: dadosIdade, backgroundColor: '#6366f1' }]
+            },
             options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: { display: true, text: 'Comparativo de Médias por Dimensão' }
-                },
-                scales: {
-                    y: { 
-                        beginAtZero: true, 
-                        max: 5,
-                        title: { display: true, text: 'Média Likert' }
-                    }
-                }
+                plugins: { title: { display: true, text: 'Correlação: Idade x Satisfação Geral' } },
+                scales: { x: { title: { display: true, text: 'Idade' } }, y: { min: 1, max: 5 } }
             }
         });
     }
