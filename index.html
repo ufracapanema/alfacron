@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Análise de Consistência - Alfa de Cronbach</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        .input-group { margin-bottom: 20px; display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+        button { padding: 12px 24px; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #219150; }
+        .result-card { background: #e8f4fd; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; }
+        #alfa-valor { font-size: 2.5rem; font-weight: 900; color: #2980b9; }
+        canvas { margin-top: 30px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Calculadora de Alfa de Cronbach</h1>
+    <p>Insira a URL de publicação (CSV) da sua planilha do Google:</p>
+    
+    <div class="input-group">
+        <input type="text" id="urlInput" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
+        <button onclick="processarDados()">Analisar Planilha</button>
+    </div>
+
+    <div id="resultado" class="result-card" style="display:none;">
+        <div id="alfa-valor">0.0000</div>
+        <div id="alfa-status" style="font-weight: bold; margin-top: 10px;"></div>
+    </div>
+
+    <canvas id="meuGrafico"></canvas>
+</div>
+
+<script>
+    let graficoInstancia = null;
+
+    async function processarDados() {
+        const url = document.getElementById('urlInput').value;
+        if (!url) return alert("https://docs.google.com/spreadsheets/d/e/2PACX-1vSwAUoxx1jWlu5aXP_f7dbepw6iUIwPhEkk8RavOTVRJqTUqkahzZ109RNWd0rXTqDJQdfO77YjplHe/pub?output=csv");
+
+        try {
+            const response = await fetch(url);
+            const dataText = await response.text();
+            
+            // Converter CSV para Matriz (ignorando cabeçalho)
+            const linhas = dataText.split('\n').map(l => l.split(','));
+            const cabecalho = linhas[0];
+            const matriz = linhas.slice(1)
+                                .map(l => l.map(Number))
+                                .filter(l => !l.some(isNaN) && l.length > 1);
+
+            const alfa = calcularAlfa(matriz);
+            exibirResultado(alfa, matriz, cabecalho);
+        } catch (e) {
+            alert("Erro ao ler planilha. Verifique se ela foi publicada como CSV.");
+        }
+    }
+
+    function calcularVariancia(valores) {
+        const n = valores.length;
+        const media = valores.reduce((a, b) => a + b, 0) / n;
+        return valores.reduce((a, b) => a + Math.pow(b - media, 2), 0) / (n - 1);
+    }
+
+    function calcularAlfa(matriz) {
+        const k = matriz[0].length;
+        const varianciasItens = [];
+        for (let col = 0; col < k; col++) {
+            varianciasItens.push(calcularVariancia(matriz.map(l => l[col])));
+        }
+        const somaVariancias = varianciasItens.reduce((a, b) => a + b, 0);
+        const somasLinhas = matriz.map(l => l.reduce((a, b) => a + b, 0));
+        const varianciaTotal = calcularVariancia(somasLinhas);
+
+        return {
+            valor: (k / (k - 1)) * (1 - (somaVariancias / varianciaTotal)),
+            variancias: varianciasItens
+        };
+    }
+
+    function exibirResultado(alfa, matriz, cabecalho) {
+        document.getElementById('resultado').style.display = 'block';
+        const display = document.getElementById('alfa-valor');
+        const status = document.getElementById('alfa-status');
+        
+        const val = alfa.valor.toFixed(4);
+        display.innerText = val;
+
+        if (val > 0.8) { status.innerText = "Excelente Consistência"; status.style.color = "green"; }
+        else if (val > 0.7) { status.innerText = "Consistência Aceitável"; status.style.color = "#d4a017"; }
+        else { status.innerText = "Baixa Consistência"; status.style.color = "red"; }
+
+        gerarGrafico(cabecalho, alfa.variancias);
+    }
+
+    function gerarGrafico(labels, dados) {
+        const ctx = document.getElementById('meuGrafico').getContext('2d');
+        if (graficoInstancia) graficoInstancia.destroy();
+
+        graficoInstancia = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Variância por Item (Pergunta)',
+                    data: dados,
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
